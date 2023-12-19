@@ -21,7 +21,7 @@ node build.js this.computer 4.this.computer 6.this.computer $PWD/dist
 
 # If target does not exist, try /etc/nginx/sites or /etc/nginx/conf.d 
 sudo mkdir -p /srv/tmp
-sudo cp conf/this-computer-certbot.conf /etc/nginx/sites-enabled
+sudo cp conf/this-computer-certbot.conf /etc/nginx/sites-enabled/
 sudo systemctl reload nginx
 sudo certbot certonly --webroot -w /srv/tmp -d this.computer -d 4.this.computer -d 6.this.computer
 # Assuming the above worked!
@@ -29,7 +29,7 @@ echo 'systemctl reload nginx' | sudo tee /etc/letsencrypt/renewal-hooks/deploy/n
 sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/nginx.sh
 
 # After certificates are ready:
-sudo cp conf/this-computer.conf /etc/nginx/sites-enabled
+sudo cp conf/this-computer.conf /etc/nginx/sites-enabled/
 sudo systemctl reload nginx
 
 ```
