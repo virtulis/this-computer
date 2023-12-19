@@ -1,0 +1,73 @@
+<html lang="en">
+
+<head>
+	<title>BASE_HOST</title>
+	<meta charset="utf8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes" />
+	<style>
+		body {
+			font-family: sans-serif;
+			padding: 16px;
+		}
+		footer {
+			margin: 16px 0;
+		}
+	</style>
+</head>
+
+<body>
+
+<noscript>
+	This page requires JavaScript to work. Or use the <a href="https://BASE_HOST/text">text version</a>.
+</noscript>
+
+<main>
+	<h2>This Computer:</h2>
+	<dl>
+		<dt>IPv4:</dt>
+		<dd id="public4">...</dd>
+		<dt>IPv6:</dt>
+		<dd id="public6">...</dd>
+	</dl>
+	<button id="copy">Copy</button>
+	<button id="copy4" disabled>IPv4</button>
+	<button id="copy6" disabled>IPv6</button>
+</main>
+
+<footer>
+	100% <a href="https://kludge.guru">kludges</a>.
+	<a href="https://github.com/virtulis/this-computer">Github</a>.
+	<a href="https://ko-fi.com/kludge_guru">Ko-fi</a>.
+</footer>
+
+<script type="application/javascript">
+	
+	const timeout = new Promise(resolve => setTimeout(() => resolve(null), 30_000));
+	
+	const ips = {};
+	const promises = {
+		4: Promise.race([timeout, fetch('https://IP4_HOST/').then(res => res.text()).catch(() => null)]),
+		6: Promise.race([timeout, fetch('https://IP6_HOST/').then(res => res.text()).catch(() => null)]),
+	};
+	Object.entries(promises).forEach(([v, p]) => p.then(str => {
+		ips[v] = str?.trim();
+		document.getElementById(`public${v}`).textContent = str ?? '—';
+		document.getElementById(`copy${v}`).disabled = !str;
+	}));
+	
+	document.getElementById('copy').addEventListener('click', async e => {
+		const lines = Object.values(ips).filter(s => !!s);
+		if (!lines.length) return;
+		await navigator.clipboard.writeText(lines.join('\n'));
+		e.target.textContent = 'Copied';
+	});
+	[4, 6].forEach(v => document.getElementById(`copy${v}`).addEventListener('click', async e => {
+		await navigator.clipboard.writeText(ips[v]);
+		e.target.textContent = 'Copied';
+	}));
+
+</script>
+
+</body>
+
+</html>
