@@ -2,7 +2,7 @@ import { WebSocketServer } from 'ws';
 
 const verbose = !!process.env.WS_VERBOSE;
 const port = process.env.WS_PORT ? Number(process.env.WS_PORT) : 1234;
-const wss = new WebSocketServer({ port });
+const wss = new WebSocketServer({ port, host: '127.0.0.1' });
 
 const timeoutMs = 60_000;
 let connId = 1;

@@ -1,0 +1,12 @@
+[Unit]
+Description=This.Computer Pong Server
+
+[Service]
+WorkingDirectory=/srv/this-computer
+Environment="WS_PORT=1234"
+ExecStart=/usr/bin/node pong/server.js
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+
