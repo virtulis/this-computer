@@ -9,6 +9,12 @@
 		body {
 			font-family: sans-serif;
 			padding: 16px;
+			--canvas-axis: #000;
+			--canvas-bars: #606;
+			--canvas-line: #090;
+		}
+		a {
+			color: #339;
 		}
 		footer {
 			margin: 30px 0 10px;
@@ -16,6 +22,42 @@
 		button {
 			font-size: 20px;
 			padding: 10px 15px;
+		}
+		#graphs {
+			display: flex;
+			flex-direction: column;
+			gap: 16px;
+			padding: 16px 0;
+			max-width: 500px;
+		}
+		.legend {
+			display: flex;
+			gap: 16px;
+			align-items: center;
+			flex-wrap: wrap;
+		}
+		.legend span {
+			min-width: 80px;
+		}
+		canvas {
+			width: 100%;
+			max-width: 500px;
+		}
+		@media (prefers-color-scheme: dark) {
+			body {
+				background: black;
+				color: white;
+				--canvas-axis: #fff;
+				--canvas-bars: #969;
+				--canvas-line: #6e6;
+			}
+			a {
+				color: #66a;
+			}
+			button {
+				background: transparent;
+				color: white;
+			}
 		}
 	</style>
 </head>
@@ -37,6 +79,12 @@
 	<button id="copy">Copy</button>
 	<button id="copy4" disabled>IPv4</button>
 	<button id="copy6" disabled>IPv6</button>
+	<div id="graphs">
+
+	</div>
+	<div id="debug">
+
+	</div>
 </main>
 
 <footer>
@@ -47,9 +95,9 @@
 </footer>
 
 <script type="application/javascript">
-	
+
 	const timeout = new Promise(resolve => setTimeout(() => resolve(null), 30_000));
-	
+
 	const ips = {};
 	const promises = {
 		4: Promise.race([timeout, fetch('https://IP4_HOST/').then(res => res.text()).catch(() => null)]),
@@ -60,7 +108,7 @@
 		document.getElementById(`public${v}`).textContent = str ?? '—';
 		document.getElementById(`copy${v}`).disabled = !str;
 	}));
-	
+
 	document.getElementById('copy').addEventListener('click', async e => {
 		const lines = Object.values(ips).filter(s => !!s);
 		if (!lines.length) return;
@@ -71,6 +119,150 @@
 		await navigator.clipboard.writeText(ips[v]);
 		e.target.textContent = 'Copied';
 	}));
+
+	const pingServers = [{
+		label: '???',
+		host: 'BASE_HOST'
+	}];
+
+	const graphsCtr = document.getElementById('graphs');
+	const debug = document.getElementById('debug');
+	const bufLen = 30 * 5;
+
+	for (const [i, { label, host }] of pingServers.entries()) {
+
+		let ws;
+		let backoff = 1;
+		let pinger;
+		let interval = 200;
+		let worst = 500;
+		let changed = false;
+
+		const pings = [];
+		const recv = [];
+
+		const legend = document.createElement('div');
+		legend.className = 'legend';
+		const lblSpan = document.createElement('strong');
+		lblSpan.textContent = `${label}:`;
+		legend.append(lblSpan);
+		const [avgSpan, minSpan, maxSpan, jitSpan] = [1, 2, 3, 4].map(_ => {
+			const s = document.createElement('span');
+			legend.append(s);
+			return s;
+		});
+		graphsCtr.append(legend);
+
+		const canvas = document.createElement('canvas');
+		let dpr, cw, ch, style;
+		const resizeCanvas = () => {
+			const ctrW = graphsCtr.getBoundingClientRect().width;
+			dpr = devicePixelRatio;
+			canvas.width = cw = Math.round(ctrW * dpr);
+			canvas.height = ch = Math.round(200 * dpr);
+			style = getComputedStyle(graphsCtr);
+		};
+		graphsCtr.append(canvas);
+		resizeCanvas();
+		window.addEventListener('resize', resizeCanvas);
+
+		const connect = () => {
+			ws = new WebSocket(`wss://${host}/ws`);
+			ws.onclose = closed;
+			ws.onmessage = e => {
+				const msg = JSON.parse(e.data);
+				if (msg.interval) {
+					interval = msg.interval;
+					clearInterval(pinger);
+					pinger = setInterval(() => {
+						const at = Date.now();
+						const prev = pings[pings.length - 1];
+						const sentDiff = prev ? at - prev.at : interval;
+						ws.send(JSON.stringify({ ping: at }))
+						pings.push({ at, sentDiff, roundtrip: null, diff: null });
+						if (pings.length > bufLen) pings.shift();
+					}, interval);
+				}
+				if (msg.ping) {
+					const at = Date.now();
+					const last = recv[recv.length - 1];
+					const diff = !last ? 0 : (at - last.at) - interval;
+					recv.push({ at: Date.now(), ping: msg.ping, diff });
+					if (recv.length > bufLen) recv.shift();
+				}
+				if (msg.pong) {
+					const ping = pings.find(p => p.at == msg.pong);
+					if (ping) {
+						ping.roundtrip = Date.now() - ping.at;
+						ping.diff = msg.diff - ping.sentDiff;
+					}
+				}
+				changed = true;
+				// debug.textContent = JSON.stringify({ pings, recv });
+			}
+		};
+		const closed = () => {
+			clearInterval(pinger);
+			setTimeout(connect, 1_000 * backoff++);
+		}
+
+		connect();
+
+		const ctx = canvas.getContext('2d');
+		const paint = () => {
+
+			const mid = Math.round(ch / 2);
+			const tWin = bufLen * interval;
+			const t0 = Date.now() - tWin;
+			const bar = Math.ceil(cw / bufLen);
+			ctx.clearRect(0, 0, cw, ch);
+			ctx.fillStyle = style.getPropertyValue('--canvas-axis');
+			ctx.fillRect(0, mid, cw, 1);
+			ctx.fillStyle = style.getPropertyValue('--canvas-bars');
+			for (const ping of pings) {
+				const x = (ping.at - t0) / tWin * cw;
+				const h = ping.roundtrip ? ping.roundtrip / worst * ch : 1;
+				const y = mid - h / 2 + (ping.diff || 0) / worst;
+				ctx.fillRect(x, y, bar, h);
+			}
+			ctx.strokeStyle = style.getPropertyValue('--canvas-line');
+			ctx.lineWidth = dpr * 2;
+			ctx.beginPath();
+			for (const [i, ping] of recv.entries()) {
+				const x = (ping.at - t0) / tWin * cw;
+				const y = mid + (ping.diff || 0) / worst;
+				if (i) ctx.lineTo(x, y);
+				else ctx.moveTo(x, y);
+			}
+			ctx.stroke();
+
+			if (changed) {
+				let min = Infinity, max = 0, sum = 0, num = 0, jit = 0;
+				for (const [i, ping] of pings.entries()) {
+					const rtt = ping.roundtrip;
+					if (typeof rtt != 'number') continue;
+					num++;
+					sum += rtt;
+					min = Math.min(min, rtt);
+					max = Math.max(max, rtt);
+					if (i) jit = Math.max(jit, Math.abs(ping.diff));
+				}
+				if (num) {
+					const avg = sum / num;
+					avgSpan.textContent = `Avg; ${avg.toFixed(1)} ms`;
+					minSpan.textContent = `Min: ${Math.round(min)} ms`;
+					maxSpan.textContent = `Max: ${Math.round(max)} ms`;
+					jitSpan.textContent = `Jitter: ${Math.round(jit)} ms`;
+				}
+				changed = false;
+			}
+
+			requestAnimationFrame(paint);
+
+		};
+		requestAnimationFrame(paint);
+
+	}
 
 </script>
 

@@ -1,4 +1,5 @@
 /dist
 /conf
+/node_modules
 
 /.idea
