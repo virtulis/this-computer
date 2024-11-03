@@ -24,6 +24,6 @@ export default {
         },*/
     ],
 
-    pingServerPort: 1234,
+    pongServerPort: 1234,
 
 };
