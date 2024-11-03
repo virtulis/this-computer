@@ -7,12 +7,13 @@ async function main() {
 	await mkdir('dist', { recursive: true });
 	await mkdir('conf', { recursive: true });
 
+	const BASE_DIR = await realpath(process.cwd());
 	const DIST_DIR = await realpath('dist');
 	const CONF_DIR = await realpath('conf');
 	const [BASE_HOST, IP4_HOST, IP6_HOST, PONG_PORT] = [config.baseHost, config.ipv4Host, config.ipv4Host, config.pongServerPort];
 	const CONFIG_JSON = JSON.stringify(config);
 
-	const vars = { BASE_HOST, IP4_HOST, IP6_HOST, DIST_DIR, CONF_DIR, PONG_PORT, CONFIG_JSON };
+	const vars = { BASE_HOST, IP4_HOST, IP6_HOST, BASE_DIR, DIST_DIR, CONF_DIR, PONG_PORT, CONFIG_JSON };
 	console.log(vars);
 
 	const files = await readdir('template');

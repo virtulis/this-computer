@@ -2,7 +2,7 @@
 Description=This.Computer Pong Server
 
 [Service]
-WorkingDirectory=DIST_DIR
+WorkingDirectory=BASE_DIR
 Environment="WS_PORT=PONG_PORT"
 ExecStart=/usr/bin/node pong/server.js
 Restart=on-failure
