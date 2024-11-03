@@ -6,6 +6,8 @@ WorkingDirectory=DIST_DIR
 Environment="WS_PORT=PONG_PORT"
 ExecStart=/usr/bin/node pong/server.js
 Restart=on-failure
+User=nobody
+Group=nogroup
 
 [Install]
 WantedBy=default.target
