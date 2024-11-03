@@ -25,19 +25,27 @@
 		}
 		#graphs {
 			display: flex;
-			flex-direction: column;
+			flex-wrap: wrap;
 			gap: 16px;
 			padding: 16px 0;
+			width: 100%;
+		}
+		.graph {
+			display: flex;
+			flex-direction: column;
+			gap: 4px;
+			width: 100%;
 			max-width: 500px;
 		}
 		.legend {
 			display: flex;
-			gap: 16px;
+			gap: 8px;
 			align-items: center;
 			flex-wrap: wrap;
+			max-width: 500px;
 		}
 		.legend span {
-			min-width: 80px;
+			min-width: 100px;
 		}
 		canvas {
 			width: 100%;
@@ -89,19 +97,22 @@
 
 <footer>
 	100% <a href="https://kludge.guru">kludges</a>.
-	<a href="https://loud.computer/@virtulis/111606765891568617">Share</a>!
+	<a href="https://loud.computer/@virtulis/113415168353910319">Share</a>!
 	<a href="https://github.com/virtulis/this-computer">Github</a>.
 	<a href="https://ko-fi.com/kludge_guru">Ko-fi</a>.
 </footer>
 
 <script type="application/javascript">
 
+	const config = CONFIG_JSON;
+	const { graphWindow, jitterWindow, pingServers, graphScale, ipv4Host, ipv6Host } = config;
+
 	const timeout = new Promise(resolve => setTimeout(() => resolve(null), 30_000));
 
 	const ips = {};
 	const promises = {
-		4: Promise.race([timeout, fetch('https://IP4_HOST/').then(res => res.text()).catch(() => null)]),
-		6: Promise.race([timeout, fetch('https://IP6_HOST/').then(res => res.text()).catch(() => null)]),
+		4: Promise.race([timeout, fetch(`https://${ipv4Host}/`).then(res => res.text()).catch(() => null)]),
+		6: Promise.race([timeout, fetch(`https://${ipv6Host}/`).then(res => res.text()).catch(() => null)]),
 	};
 	Object.entries(promises).forEach(([v, p]) => p.then(str => {
 		ips[v] = str?.trim();
@@ -120,27 +131,23 @@
 		e.target.textContent = 'Copied';
 	}));
 
-	const pingServers = [{
-		label: '???',
-		host: 'BASE_HOST'
-	}];
-
 	const graphsCtr = document.getElementById('graphs');
-	const debug = document.getElementById('debug');
-	const bufLen = 30 * 5;
 
-	for (const [i, { label, host }] of pingServers.entries()) {
+	for (const { label, host } of pingServers) {
 
 		let ws;
 		let backoff = 1;
 		let pinger;
 		let interval = 200;
-		let worst = 500;
+		let bufLen = Math.ceil(graphWindow / interval + 1);
 		let changed = false;
 
 		const pings = [];
-		const recv = [];
+		const received = [];
 
+		const graph = document.createElement('graph');
+		graph.className = 'graph';
+		graphsCtr.append(graph);
 		const legend = document.createElement('div');
 		legend.className = 'legend';
 		const lblSpan = document.createElement('strong');
@@ -151,18 +158,18 @@
 			legend.append(s);
 			return s;
 		});
-		graphsCtr.append(legend);
+		graph.append(legend);
 
 		const canvas = document.createElement('canvas');
+		graph.append(canvas);
 		let dpr, cw, ch, style;
 		const resizeCanvas = () => {
-			const ctrW = graphsCtr.getBoundingClientRect().width;
+			const ctrW = canvas.getBoundingClientRect().width;
 			dpr = devicePixelRatio;
 			canvas.width = cw = Math.round(ctrW * dpr);
 			canvas.height = ch = Math.round(200 * dpr);
 			style = getComputedStyle(graphsCtr);
 		};
-		graphsCtr.append(canvas);
 		resizeCanvas();
 		window.addEventListener('resize', resizeCanvas);
 
@@ -173,6 +180,7 @@
 				const msg = JSON.parse(e.data);
 				if (msg.interval) {
 					interval = msg.interval;
+					bufLen = Math.ceil(graphWindow / interval + 1);
 					clearInterval(pinger);
 					pinger = setInterval(() => {
 						const at = Date.now();
@@ -180,15 +188,17 @@
 						const sentDiff = prev ? at - prev.at : interval;
 						ws.send(JSON.stringify({ ping: at }))
 						pings.push({ at, sentDiff, roundtrip: null, diff: null });
-						if (pings.length > bufLen) pings.shift();
+						while (pings.length > bufLen || (pings[0] && at - pings[0].at > graphWindow + interval)) {
+							pings.shift();
+						}
 					}, interval);
 				}
 				if (msg.ping) {
 					const at = Date.now();
-					const last = recv[recv.length - 1];
+					const last = received[received.length - 1];
 					const diff = !last ? 0 : (at - last.at) - interval;
-					recv.push({ at: Date.now(), ping: msg.ping, diff });
-					if (recv.length > bufLen) recv.shift();
+					received.push({ at: Date.now(), ping: msg.ping, diff });
+					if (received.length > bufLen) received.shift();
 				}
 				if (msg.pong) {
 					const ping = pings.find(p => p.at == msg.pong);
@@ -198,7 +208,6 @@
 					}
 				}
 				changed = true;
-				// debug.textContent = JSON.stringify({ pings, recv });
 			}
 		};
 		const closed = () => {
@@ -212,25 +221,24 @@
 		const paint = () => {
 
 			const mid = Math.round(ch / 2);
-			const tWin = bufLen * interval;
-			const t0 = Date.now() - tWin;
+			const t0 = Date.now() - graphWindow;
 			const bar = Math.ceil(cw / bufLen);
 			ctx.clearRect(0, 0, cw, ch);
 			ctx.fillStyle = style.getPropertyValue('--canvas-axis');
 			ctx.fillRect(0, mid, cw, 1);
 			ctx.fillStyle = style.getPropertyValue('--canvas-bars');
 			for (const ping of pings) {
-				const x = (ping.at - t0) / tWin * cw;
-				const h = ping.roundtrip ? ping.roundtrip / worst * ch : 1;
-				const y = mid - h / 2 + (ping.diff || 0) / worst;
+				const x = (ping.at - t0) / graphWindow * cw;
+				const h = ping.roundtrip ? ping.roundtrip / graphScale * ch : 1;
+				const y = mid - h / 2 + (ping.diff || 0) / graphScale;
 				ctx.fillRect(x, y, bar, h);
 			}
 			ctx.strokeStyle = style.getPropertyValue('--canvas-line');
 			ctx.lineWidth = dpr * 2;
 			ctx.beginPath();
-			for (const [i, ping] of recv.entries()) {
-				const x = (ping.at - t0) / tWin * cw;
-				const y = mid + (ping.diff || 0) / worst;
+			for (const [i, ping] of received.entries()) {
+				const x = (ping.at - t0) / graphWindow * cw;
+				const y = mid + (ping.diff || 0) / graphScale;
 				if (i) ctx.lineTo(x, y);
 				else ctx.moveTo(x, y);
 			}
@@ -238,6 +246,8 @@
 
 			if (changed) {
 				let min = Infinity, max = 0, sum = 0, num = 0, jit = 0;
+				const jitCutoff = Date.now() - jitterWindow;
+				let prev;
 				for (const [i, ping] of pings.entries()) {
 					const rtt = ping.roundtrip;
 					if (typeof rtt != 'number') continue;
@@ -245,11 +255,18 @@
 					sum += rtt;
 					min = Math.min(min, rtt);
 					max = Math.max(max, rtt);
-					if (i) jit = Math.max(jit, Math.abs(ping.diff));
+					if (i && ping.at >= jitCutoff) {
+						jit = Math.max(jit, Math.abs(ping.diff), prev ? Math.abs(prev.roundtrip - rtt) : 0);
+					}
+					prev = ping;
+				}
+				for (const ping of received) {
+					if (ping.at < jitCutoff) continue;
+					jit = Math.max(jit, ping.diff);
 				}
 				if (num) {
 					const avg = sum / num;
-					avgSpan.textContent = `Avg; ${avg.toFixed(1)} ms`;
+					avgSpan.textContent = `Avg: ${avg.toFixed(1)} ms`;
 					minSpan.textContent = `Min: ${Math.round(min)} ms`;
 					maxSpan.textContent = `Max: ${Math.round(max)} ms`;
 					jitSpan.textContent = `Jitter: ${Math.round(jit)} ms`;

@@ -10,12 +10,14 @@ Available at [this.computer](https://this.computer).
 * Have a hostname for the website.
 * Have two hostnames for the IP checks, one with just an A record, one with just AAAA.
 
-Do this (substitute the hostnames):
+Copy `config.example.js` to `config.js` and edit as needed.
 
 ```bash
+# install the few dependencies (pnpm is preferred but npm will work too)
+pnpm install
 
-# substitute the hostnames. $PWD/dist is where the html file is
-node build.js this.computer 4.this.computer 6.this.computer $PWD/dist
+# this generates `dist/index.html` and nginx configs in conf/
+node build.js
 
 # LetsEncrypt setup (skip and edit the main config if you prefer handling it yourself)
 
@@ -32,7 +34,13 @@ sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/nginx.sh
 sudo cp conf/this-computer.conf /etc/nginx/sites-enabled/
 sudo systemctl reload nginx
 
+# Enable the pinger service
+sudo systemctl enable --now $PWD/conf/this-computer-pong.service
+
+
 ```
+
+
 
 ## License
 
